@@ -1,0 +1,72 @@
+services:
+  db:
+    image: {{ aiops_postgres_image | to_json }}
+    pull_policy: missing
+    restart: unless-stopped
+    mem_limit: {{ aiops_postgres_memory }}
+    env_file:
+      - path: ./database.env
+        format: raw
+    command: ["postgres", "-c", "shared_buffers=32MB", "-c", "work_mem=2MB", "-c", "max_connections=30"]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks: [database]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  backend:
+    image: {{ aiops_backend_image | to_json }}
+    pull_policy: {{ 'never' if aiops_backend_image_archive | length > 0 else 'missing' }}
+    restart: unless-stopped
+    mem_limit: {{ aiops_backend_memory }}
+    env_file:
+      - path: ./runtime.env
+        format: raw
+    environment:
+      SERVER_ADDRESS: 0.0.0.0
+      SPRING_PROFILES_ACTIVE: ""
+      SERVER_SERVLET_SESSION_COOKIE_SECURE: "true"
+      SERVER_SERVLET_SESSION_COOKIE_SAME_SITE: {{ aiops_cookie_same_site | to_json }}
+      JAVA_TOOL_OPTIONS: {{ aiops_java_tool_options | to_json }}
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "5"
+      SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: "1"
+    depends_on:
+      db:
+        condition: service_healthy
+    # Loopback only for Ansible's local health check. Never open 8080 in the SG.
+    ports: ["127.0.0.1:8080:8080"]
+    networks: [database, web]
+    logging: *logging
+    stop_grace_period: 30s
+
+  proxy:
+    image: {{ aiops_proxy_image | to_json }}
+    pull_policy: missing
+    restart: unless-stopped
+    mem_limit: {{ aiops_proxy_memory }}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [backend]
+    networks: [web]
+    logging: *logging
+
+networks:
+  database:
+    internal: true
+  web: {}
+
+volumes:
+  postgres-data: {}
+  caddy-data: {}
+  caddy-config: {}

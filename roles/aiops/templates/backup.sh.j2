@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+exec 9>/run/aiops-backup.lock
+flock -w 300 9
+backup_dir={{ aiops_backup_dir | quote }}
+db_id=$(docker ps --filter label=com.docker.compose.project={{ aiops_project_name }} --filter label=com.docker.compose.service=db --format '{{ '{{' }}.ID{{ '}}' }}')
+test -n "$db_id"
+dump_path="$backup_dir/aiops-$(date -u +%Y%m%dT%H%M%S)-$$.dump"
+trap 'rm -f -- "$dump_path.partial"' EXIT
+# Authentication stays inside the container; never put its password in argv.
+docker exec "$db_id" sh -c 'exec pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$dump_path.partial"
+test -s "$dump_path.partial"
+mv -- "$dump_path.partial" "$dump_path"
+find "$backup_dir" -maxdepth 1 -type f -name 'aiops-*.dump' -mtime +{{ aiops_backup_retention_days | int }} -delete

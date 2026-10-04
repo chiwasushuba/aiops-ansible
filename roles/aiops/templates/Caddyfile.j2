@@ -1,0 +1,11 @@
+{{ aiops_api_domain }} {
+    request_body {
+        max_size 128KB
+    }
+    reverse_proxy backend:8080 {
+        transport http {
+            dial_timeout 5s
+            response_header_timeout 90s
+        }
+    }
+}

@@ -1,0 +1,7 @@
+---
+- name: Prepare the dedicated Ubuntu EC2 Docker host
+  hosts: aiops
+  become: true
+  serial: 1
+  roles:
+    - role: docker_host

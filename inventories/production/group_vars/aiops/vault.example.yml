@@ -1,0 +1,10 @@
+---
+# Copy to vault.yml, edit locally, then ansible-vault encrypt it. Never commit
+# plaintext credentials. This file contains placeholders, not working secrets.
+aiops_postgres_password: REPLACE_WITH_LONG_RANDOM_PASSWORD
+aiops_owner_password_hash: REPLACE_WITH_BCRYPT_COST_12_TO_16
+# Optional integrations remain disabled when these are empty.
+aiops_openai_api_key: ""
+aiops_gmail_client_id: ""
+aiops_gmail_client_secret: ""
+aiops_gmail_token_key: ""

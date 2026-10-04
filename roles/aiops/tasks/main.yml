@@ -1,0 +1,251 @@
+---
+- name: Validate public deployment inputs
+  ansible.builtin.assert:
+    that:
+      - aiops_api_domain is defined
+      - aiops_api_domain is match('^[a-zA-Z0-9][a-zA-Z0-9.-]+[.][a-zA-Z]{2,}$')
+      - "'example.com' not in aiops_api_domain"
+      - aiops_frontend_origin is defined
+      - aiops_frontend_origin is match('^https://[a-zA-Z0-9][a-zA-Z0-9.-]+[.][a-zA-Z]{2,}$')
+      - "'example.com' not in aiops_frontend_origin"
+      - aiops_backend_image is defined
+      - "'REPLACE' not in aiops_backend_image"
+      - aiops_backend_image is match('^[a-zA-Z0-9][a-zA-Z0-9_./:@-]+$')
+      - aiops_backend_image_archive | length > 0 or aiops_backend_image is search('@sha256:[a-f0-9]{64}$')
+      - aiops_backend_image_archive | length == 0 or aiops_backend_image is search(':[a-zA-Z0-9_.-]+$')
+      - "not aiops_backend_image.endswith(':latest')"
+      - aiops_cookie_same_site in ['lax', 'none', 'strict']
+      - aiops_install_dir == '/opt/aiops'
+      - aiops_backup_dir == '/var/backups/aiops'
+      - aiops_project_name == 'aiops'
+      - aiops_backup_retention_days | int >= 1
+      - aiops_postgres_db is match('^[a-z][a-z0-9_]*$')
+      - aiops_postgres_user is match('^[a-z][a-z0-9_]*$')
+      - aiops_backend_memory is match('^[0-9]+[mg]$')
+      - aiops_postgres_memory is match('^[0-9]+[mg]$')
+      - aiops_proxy_memory is match('^[0-9]+[mg]$')
+    fail_msg: Replace example domains/image and use an immutable registry digest or a unique tagged image archive.
+
+- name: Validate mandatory secrets without logging their values
+  ansible.builtin.assert:
+    that:
+      - aiops_postgres_password | default('') | length >= 24
+      - "'REPLACE' not in (aiops_postgres_password | default('REPLACE'))"
+      - aiops_owner_password_hash | default('') is match('^[$]2[aby][$]1[2-6][$][./A-Za-z0-9]{53}$')
+      - aiops_environment_values | map('string') | select('search', '[\r\n]') | list | length == 0
+    fail_msg: Configure a long database password and an owner BCrypt hash with cost 12 through 16 in encrypted vault.yml.
+  no_log: true
+  vars:
+    aiops_environment_values:
+      - "{{ aiops_postgres_password | default('') }}"
+      - "{{ aiops_owner_password_hash | default('') }}"
+      - "{{ aiops_owner_login }}"
+      - "{{ aiops_owner_name }}"
+      - "{{ aiops_owner_timezone }}"
+      - "{{ aiops_openai_api_key }}"
+      - "{{ aiops_openai_model }}"
+      - "{{ aiops_openai_max_output_tokens }}"
+      - "{{ aiops_openai_daily_run_limit }}"
+      - "{{ aiops_gmail_client_id }}"
+      - "{{ aiops_gmail_client_secret }}"
+      - "{{ aiops_gmail_token_key }}"
+
+- name: Create private application and backup directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+  loop:
+    - "{{ aiops_install_dir }}"
+    - "{{ aiops_backup_dir }}"
+
+- name: Install PostgreSQL backup script
+  ansible.builtin.template:
+    src: backup.sh.j2
+    dest: /usr/local/sbin/aiops-backup
+    owner: root
+    group: root
+    mode: '0700'
+
+- name: Render the Compose deployment
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ aiops_install_dir }}/compose.yml"
+    owner: root
+    group: root
+    mode: '0600'
+  register: aiops_compose_config
+
+- name: Render private backend and database environment
+  ansible.builtin.template:
+    src: runtime.env.j2
+    dest: "{{ aiops_install_dir }}/runtime.env"
+    owner: root
+    group: root
+    mode: '0600'
+  register: aiops_runtime_config
+  no_log: true
+  diff: false
+
+- name: Render private database environment without application credentials
+  ansible.builtin.template:
+    src: database.env.j2
+    dest: "{{ aiops_install_dir }}/database.env"
+    owner: root
+    group: root
+    mode: '0600'
+  register: aiops_database_config
+  no_log: true
+  diff: false
+
+- name: Render the HTTPS reverse proxy configuration
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ aiops_install_dir }}/Caddyfile"
+    owner: root
+    group: root
+    mode: '0644'
+  register: aiops_proxy_config
+
+- name: Stage the locally built backend image archive
+  ansible.builtin.copy:
+    src: "{{ aiops_backend_image_archive }}"
+    dest: "{{ aiops_install_dir }}/backend-image.tar"
+    owner: root
+    group: root
+    mode: '0600'
+  register: aiops_image_archive
+  when: aiops_backend_image_archive | length > 0
+
+- name: Inspect the local backend image identity
+  ansible.builtin.command:
+    argv: [docker, image, inspect, "{{ aiops_backend_image }}", '--format', '{% raw %}{{.Id}}{% endraw %}']
+  register: aiops_local_image
+  changed_when: false
+  failed_when: false
+  when:
+    - aiops_backend_image_archive | length > 0
+    - not ansible_check_mode
+
+- name: Load the backend archive when changed or missing
+  ansible.builtin.command:
+    argv: [docker, image, load, '--input', "{{ aiops_install_dir }}/backend-image.tar"]
+  changed_when: true
+  when:
+    - aiops_backend_image_archive | length > 0
+    - not ansible_check_mode
+    - aiops_image_archive.changed or aiops_local_image.rc != 0
+
+- name: Validate Compose without exposing the interpolated configuration
+  ansible.builtin.command:
+    argv: [docker, compose, '--project-name', "{{ aiops_project_name }}", '--file', "{{ aiops_install_dir }}/compose.yml", config, '--quiet']
+  changed_when: false
+  no_log: true
+  when: not ansible_check_mode
+
+- name: Find the existing running database before a release
+  ansible.builtin.command:
+    argv:
+      - docker
+      - ps
+      - '--filter'
+      - "label=com.docker.compose.project={{ aiops_project_name }}"
+      - '--filter'
+      - label=com.docker.compose.service=db
+      - '--format'
+      - '{% raw %}{{.ID}}{% endraw %}'
+  register: aiops_existing_db
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Back up the current database before changing application containers
+  ansible.builtin.command: /usr/local/sbin/aiops-backup
+  changed_when: true
+  when:
+    - not ansible_check_mode
+    - aiops_existing_db.stdout | length > 0
+    - >-
+      aiops_compose_config.changed or aiops_runtime_config.changed or
+      aiops_database_config.changed or (aiops_image_archive.changed | default(false))
+
+- name: Reconcile the Compose services
+  community.docker.docker_compose_v2:
+    project_src: "{{ aiops_install_dir }}"
+    project_name: "{{ aiops_project_name }}"
+    files: [compose.yml]
+    state: present
+    build: never
+    pull: policy
+    recreate: "{{ 'always' if aiops_runtime_config.changed or aiops_database_config.changed else 'auto' }}"
+    wait: true
+    wait_timeout: "{{ aiops_health_timeout }}"
+    remove_orphans: false
+    remove_volumes: false
+  no_log: true
+  when: not ansible_check_mode
+
+- name: Recreate the proxy to remount an atomically replaced configuration file
+  community.docker.docker_compose_v2:
+    project_src: "{{ aiops_install_dir }}"
+    project_name: "{{ aiops_project_name }}"
+    files: [compose.yml]
+    services: [proxy]
+    dependencies: false
+    state: present
+    build: never
+    pull: policy
+    recreate: always
+    wait: true
+  no_log: true
+  when:
+    - not ansible_check_mode
+    - aiops_proxy_config.changed
+
+- name: Wait for the local backend HTTP health endpoint
+  ansible.builtin.uri:
+    url: http://127.0.0.1:8080/api/health
+    return_content: true
+    status_code: 200
+  register: aiops_health
+  until: aiops_health.status | default(0) == 200 and aiops_health.json.status | default('') == 'up'
+  retries: 30
+  delay: 10
+  when: not ansible_check_mode
+
+- name: Verify the public HTTPS endpoint and certificate from the control node
+  ansible.builtin.uri:
+    url: "https://{{ aiops_api_domain }}/api/health"
+    return_content: true
+    validate_certs: true
+    status_code: 200
+  delegate_to: localhost
+  become: false
+  register: aiops_public_health
+  until: aiops_public_health.status | default(0) == 200 and aiops_public_health.json.status | default('') == 'up'
+  retries: 12
+  delay: 10
+  when: not ansible_check_mode
+
+- name: Install scheduled PostgreSQL backup units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - aiops-backup.service
+    - aiops-backup.timer
+  notify: Reload systemd units
+
+- name: Apply pending systemd unit changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable daily database backups
+  ansible.builtin.systemd_service:
+    name: aiops-backup.timer
+    enabled: true
+    state: started
+  when: not ansible_check_mode

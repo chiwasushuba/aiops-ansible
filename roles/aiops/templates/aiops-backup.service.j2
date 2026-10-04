@@ -1,0 +1,10 @@
+[Unit]
+Description=AIOps PostgreSQL logical backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+ExecStart=/usr/local/sbin/aiops-backup

@@ -1,0 +1,26 @@
+---
+# Copy to vars.yml. Assumes Ubuntu 24.04 LTS, amd64, dedicated application host.
+aiops_api_domain: api.example.com
+aiops_frontend_origin: https://app.example.com
+
+# Build OFF the EC2 host. Choose an archive with a unique release tag, or a
+# reachable registry image pinned by digest (leave archive empty in that case).
+aiops_backend_image: aiops-backend:REPLACE_WITH_RELEASE
+aiops_backend_image_archive: /mnt/c/Users/joshua/Desktop/aiops-backend-REPLACE_WITH_RELEASE.tar
+# Registry alternative:
+# aiops_backend_image: ghcr.io/chiwasushuba/aiops-backend@sha256:<64-hex-digest>
+# aiops_backend_image_archive: ""
+
+aiops_owner_login: owner
+aiops_owner_name: Owner
+aiops_owner_timezone: Asia/Manila
+# Prefer app.example.com on Vercel and api.example.com on EC2: SameSite=Lax.
+# For unrelated sites, use "none" only after reviewing third-party cookie limits.
+aiops_cookie_same_site: lax
+
+# Trial budgets for a 1 GiB t3.micro. Measure startup/RSS before real use.
+aiops_backend_memory: 512m
+aiops_postgres_memory: 192m
+aiops_proxy_memory: 64m
+aiops_java_tool_options: -Xms64m -Xmx256m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=48m -XX:MaxDirectMemorySize=32m
+aiops_backup_retention_days: 7

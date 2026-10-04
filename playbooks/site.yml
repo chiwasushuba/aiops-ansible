@@ -1,0 +1,5 @@
+---
+- name: Bootstrap the host
+  ansible.builtin.import_playbook: bootstrap.yml
+- name: Deploy the application
+  ansible.builtin.import_playbook: deploy.yml

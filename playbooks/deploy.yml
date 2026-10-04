@@ -1,0 +1,7 @@
+---
+- name: Deploy AIOps backend, PostgreSQL and HTTPS proxy
+  hosts: aiops
+  become: true
+  serial: 1
+  roles:
+    - role: aiops

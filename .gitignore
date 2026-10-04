@@ -1,0 +1,13 @@
+.venv/
+.ansible/
+.ansible-lint-cache/
+inventories/production/hosts.yml
+inventories/production/group_vars/aiops/vars.yml
+inventories/production/group_vars/aiops/vault.yml
+*.retry
+*.pem
+*.key
+*.tar
+*.tar.gz
+.env
+__pycache__/
