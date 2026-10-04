@@ -1,0 +1,45 @@
+---
+- name: Install the host firewall tools
+  ansible.builtin.apt:
+    name: iptables
+    state: present
+
+- name: Add only HTTP and HTTPS INPUT rules while preserving OCI storage rules
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: tcp
+    destination_ports: ['80', '443']
+    jump: ACCEPT
+    action: insert
+    rule_num: 1
+    wait: '10'
+    ip_version: "{{ item }}"
+    comment: AIOps HTTP and HTTPS ingress
+  loop: [ipv4, ipv6]
+
+- name: Install the additive firewall boot script
+  ansible.builtin.template:
+    src: allow-web-ingress.sh.j2
+    dest: /usr/local/sbin/aiops-allow-web-ingress
+    owner: root
+    group: root
+    mode: '0700'
+
+- name: Install the firewall boot unit
+  ansible.builtin.template:
+    src: aiops-ingress.service.j2
+    dest: /etc/systemd/system/aiops-ingress.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Reload OCI ingress units
+
+- name: Apply pending ingress unit changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable the additive ingress rules after the platform firewall at boot
+  ansible.builtin.systemd_service:
+    name: aiops-ingress.service
+    enabled: true
+    state: started
+  when: not ansible_check_mode

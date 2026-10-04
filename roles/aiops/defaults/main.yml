@@ -2,6 +2,7 @@
 aiops_install_dir: /opt/aiops
 aiops_backup_dir: /var/backups/aiops
 aiops_project_name: aiops
+aiops_container_platform: linux/arm64
 aiops_backend_image_archive: ""
 aiops_postgres_image: postgres:17-alpine
 aiops_proxy_image: caddy:2-alpine
@@ -11,10 +12,10 @@ aiops_owner_login: owner
 aiops_owner_name: Owner
 aiops_owner_timezone: Asia/Manila
 aiops_cookie_same_site: lax
-aiops_backend_memory: 512m
-aiops_postgres_memory: 192m
-aiops_proxy_memory: 64m
-aiops_java_tool_options: -Xms64m -Xmx256m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=48m -XX:MaxDirectMemorySize=32m
+aiops_backend_memory: 1024m
+aiops_postgres_memory: 512m
+aiops_proxy_memory: 128m
+aiops_java_tool_options: -Xms128m -Xmx512m -XX:MaxMetaspaceSize=192m -XX:ReservedCodeCacheSize=64m -XX:MaxDirectMemorySize=64m
 aiops_openai_api_key: ""
 aiops_openai_model: gpt-6-luna
 aiops_openai_max_output_tokens: 2048

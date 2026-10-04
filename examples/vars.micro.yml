@@ -1,0 +1,8 @@
+---
+# Optional E2.1.Micro override, not loaded automatically. Use with -e @examples/vars.micro.yml
+# Build a separate linux/amd64 backend release and select that image/archive in vars.yml.
+aiops_container_platform: linux/amd64
+aiops_backend_memory: 512m
+aiops_postgres_memory: 192m
+aiops_proxy_memory: 64m
+aiops_java_tool_options: -Xms64m -Xmx256m -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=48m -XX:MaxDirectMemorySize=32m

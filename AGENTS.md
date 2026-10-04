@@ -3,10 +3,11 @@
 ## Purpose and current state
 
 This repository is intended for Ansible-based DevOps automation, CI/CD, and
-AWS architecture with an emphasis on EC2 and free-first implementations.
-Ansible now prepares an existing Ubuntu 24.04 amd64 host and deploys the sibling
-aiops backend, PostgreSQL 17 and Caddy with Compose. React/Vite stays on Vercel.
-There are no AWS provisioning or CI workflows. Supported control nodes are Linux
+Oracle Cloud hosting with an emphasis on Always Free implementations.
+Ansible prepares an existing Ubuntu 24.04 A1 arm64 VM (amd64 E2 Micro is an
+explicit fallback) and deploys the sibling aiops backend, PostgreSQL 17 and Caddy
+with Compose. React/Vite stays on Vercel. There are no cloud provisioning or
+CI workflows. Supported control nodes are Linux
 or WSL with Python 3.12; inspect README and pinned requirements before execution.
 
 ## Change workflow
@@ -15,10 +16,10 @@ or WSL with Python 3.12; inspect README and pinned requirements before execution
   files, and state the intended changes before substantive edits.
 - Preserve existing work. Implement only the requested infrastructure,
   automation, or delivery scope, then run proportionate checks and report them.
-- Prefer local rehearsal, existing hardware, and community tooling. For AWS,
+- Prefer local rehearsal, existing hardware, and community tooling. For OCI,
   verify account plan/eligibility, region, workload, credits and expiry before
   describing an implementation as free. Include recurring cost after credits.
-- Default to a small EC2 design with systemd or Compose only when it satisfies
+- Default to one Ubuntu OCI VM with systemd or Compose when it satisfies
   the workload. Explain any need for managed NAT, load balancing, multi-AZ,
   managed databases, Kubernetes, or a persistent CI controller and its cost.
 - Design and repository edits do not authorize provisioning, deployments, live
@@ -33,7 +34,7 @@ Reuse the installed global capabilities rather than duplicating their prompts:
 | --- | --- | --- |
 | Ansible and declarative infrastructure | `iac-engineer` | `$infrastructure-as-code` |
 | CI/CD jobs, runner trust, release artifacts | `pipeline-architect` | `$pipeline-architecture` |
-| EC2 topology, sizing, access, storage, recovery | `cloud-architect` | `$aws-ec2-architecture` |
+| OCI topology, access, boot volumes, recovery | primary agent | `$infrastructure-as-code`, `$free-first-operations` |
 | Containers, reverse proxy, host/runtime delivery | `platform-engineer` | `$delivery-platform`, `$systems-operations` |
 | Cost, allowance, expiry, retained-resource review | `cloud-cost-reviewer` | `$free-first-operations` |
 
@@ -41,7 +42,7 @@ For new labs and budget-sensitive changes, compose `$free-first-operations`
 with the owning skill. Use agents only when delegation benefits the task and
 is authorized; ordinary scoped work can stay with the primary agent.
 
-## Ansible and EC2 conventions
+## Ansible and Oracle Cloud conventions
 
 - When adding automation, separate nonsecret inventories and environment
   variables from reusable roles/playbooks. Pin required collections and document
@@ -49,18 +50,24 @@ is authorized; ordinary scoped work can stay with the primary agent.
   unless the selected toolchain explicitly supports another environment.
 - Prefer idempotent modules, explicit privilege escalation, scoped host groups,
   handlers, and serialized/batched disruptive changes. Review `delegate_to`,
-  local actions, inventory plugins, and tasks that call AWS APIs for side effects.
+  local actions, inventory plugins, and tasks that call cloud APIs for side effects.
 - Keep passwords, private keys, cloud credentials, decrypted Vault data, state,
   sensitive plans, and session output out of Git and reports. Never embed secrets
   in user data. Use instance roles and short-lived CI identity where supported.
-- Restrict SSH/SSM and database access. Check SSM agent, IAM and outbound-network
-  prerequisites; include public-address/NAT/endpoint costs in the design.
+- Restrict SSH and database access in both OCI NSGs and subnet security lists.
+  Preserve platform OUTPUT/iSCSI firewall rules; never flush tables or enable
+  UFW on an OCI Ubuntu platform image. The oci_ingress role adds only HTTP/HTTPS
+  INPUT rules and a boot unit. Review Docker forwarding and cloud routes too.
+- Match Docker repository, image and VM architectures: linux/arm64 for A1,
+  linux/amd64 with the explicit examples/vars.micro.yml override for E2 Micro.
+  Build off the VM. Verify home-region allowances/capacity and idle reclamation;
+  do not assume older 4-OCPU/24-GB Free Tier claims still apply to this tenancy.
 - Keep untrusted CI execution away from deployment credentials and the application
   host. Build/test locally or on an appropriate isolated runner, then deploy the
   immutable artifact only through the authorized release path.
 - Make persistent data, backups, restore, health checks, rollback, log retention,
   expiry, and cleanup ownership explicit. Stopping an instance is not evidence
-  that all AWS costs have stopped.
+  that all retained-resource charges have stopped.
 
 ## Verification
 

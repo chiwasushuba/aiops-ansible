@@ -1,6 +1,7 @@
 services:
   db:
     image: {{ aiops_postgres_image | to_json }}
+    platform: {{ aiops_container_platform | to_json }}
     pull_policy: missing
     restart: unless-stopped
     mem_limit: {{ aiops_postgres_memory }}
@@ -24,6 +25,7 @@ services:
 
   backend:
     image: {{ aiops_backend_image | to_json }}
+    platform: {{ aiops_container_platform | to_json }}
     pull_policy: {{ 'never' if aiops_backend_image_archive | length > 0 else 'missing' }}
     restart: unless-stopped
     mem_limit: {{ aiops_backend_memory }}
@@ -41,7 +43,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    # Loopback only for Ansible's local health check. Never open 8080 in the SG.
+    # Loopback only for Ansible's health check. Never allow 8080 in OCI ingress.
     ports: ["127.0.0.1:8080:8080"]
     networks: [database, web]
     logging: *logging
@@ -49,6 +51,7 @@ services:
 
   proxy:
     image: {{ aiops_proxy_image | to_json }}
+    platform: {{ aiops_container_platform | to_json }}
     pull_policy: missing
     restart: unless-stopped
     mem_limit: {{ aiops_proxy_memory }}

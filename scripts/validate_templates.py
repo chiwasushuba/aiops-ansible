@@ -1,4 +1,4 @@
-"""Offline checks with synthetic secrets; never connects to Docker or EC2."""
+"""Offline checks with synthetic secrets; never connects to Docker or Oracle Cloud."""
 
 import argparse
 import json
@@ -59,10 +59,34 @@ def render_and_check(output: Path) -> None:
         assert "build" not in service
         assert service["restart"] == "unless-stopped"
         assert service["logging"]["options"]["max-size"] == "10m"
+        assert service["platform"] == "linux/arm64"
     for service in ("backend", "db"):
         assert services[service]["env_file"][0]["format"] == "raw"
     assert services["backend"]["pull_policy"] == "never"
     assert compose["volumes"]["postgres-data"] == {}
+
+    # The optional micro override must change every service's platform and budget.
+    micro_variables = variables | yaml.safe_load((ROOT / "examples/vars.micro.yml").read_text())
+    micro_render = environment.from_string(
+        (ROOT / "roles/aiops/templates/compose.yml.j2").read_text()
+    ).render(**micro_variables)
+    micro_services = yaml.safe_load(micro_render)["services"]
+    assert all(service["platform"] == "linux/amd64" for service in micro_services.values())
+    assert micro_services["backend"]["mem_limit"] == "512m"
+
+    # Verify the actual bootstrap repository expression for both VM architectures.
+    docker_defaults = yaml.safe_load((ROOT / "roles/docker_host/defaults/main.yml").read_text())
+    docker_tasks = yaml.safe_load((ROOT / "roles/docker_host/tasks/main.yml").read_text())
+    repository = next(
+        task["ansible.builtin.apt_repository"]["repo"]
+        for task in docker_tasks
+        if "ansible.builtin.apt_repository" in task
+    )
+    for fact, package_arch in {"aarch64": "arm64", "x86_64": "amd64"}.items():
+        repo = environment.from_string(repository).render(
+            **docker_defaults, ansible_facts={"architecture": fact}
+        )
+        assert f"arch={package_arch} " in repo
 
     # Also render the registry delivery branch.
     variables["aiops_backend_image_archive"] = ""
@@ -76,6 +100,13 @@ def render_and_check(output: Path) -> None:
     assert "{{.ID}}" in backup
     subprocess.run(["bash", "-n", str(output / "backup.sh")], check=True)
 
+    ingress = environment.from_string(
+        (ROOT / "roles/oci_ingress/templates/allow-web-ingress.sh.j2").read_text()
+    ).render()
+    ingress_path = output / "allow-web-ingress.sh"
+    ingress_path.write_text(ingress)
+    subprocess.run(["sh", "-n", str(ingress_path)], check=True)
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -86,7 +117,7 @@ def main() -> None:
     else:
         with tempfile.TemporaryDirectory(prefix="aiops-offline-") as directory:
             render_and_check(Path(directory))
-    print("Template checks passed: secret preservation, private DB, delivery branches, backup shell syntax.")
+    print("Template checks passed: secrets, private DB, ARM/AMD platforms, Docker repositories, delivery branches, backup/ingress shell syntax.")
 
 
 if __name__ == "__main__":

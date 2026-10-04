@@ -26,6 +26,19 @@
       - aiops_proxy_memory is match('^[0-9]+[mg]$')
     fail_msg: Replace example domains/image and use an immutable registry digest or a unique tagged image archive.
 
+- name: Require a container platform matching the Ubuntu VM architecture
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] == 'Ubuntu'
+      - ansible_facts['distribution_version'] == '24.04'
+      - ansible_facts['architecture'] in ['aarch64', 'x86_64']
+      - aiops_container_platform == aiops_host_platforms[ansible_facts['architecture']]
+    fail_msg: Use linux/arm64 images for A1 Flex or linux/amd64 images and the micro overrides for E2.1.Micro.
+  vars:
+    aiops_host_platforms:
+      aarch64: linux/arm64
+      x86_64: linux/amd64
+
 - name: Validate mandatory secrets without logging their values
   ansible.builtin.assert:
     that:
@@ -137,6 +150,29 @@
     - aiops_backend_image_archive | length > 0
     - not ansible_check_mode
     - aiops_image_archive.changed or aiops_local_image.rc != 0
+
+- name: Inspect the loaded archive platform before changing containers
+  ansible.builtin.command:
+    argv:
+      - docker
+      - image
+      - inspect
+      - "{{ aiops_backend_image }}"
+      - '--format'
+      - '{% raw %}{{.Os}}/{{.Architecture}}{% endraw %}'
+  register: aiops_archive_platform
+  changed_when: false
+  when:
+    - aiops_backend_image_archive | length > 0
+    - not ansible_check_mode
+
+- name: Reject an archive built for a different VM architecture
+  ansible.builtin.assert:
+    that: aiops_archive_platform.stdout == aiops_container_platform
+    fail_msg: Rebuild the backend archive using the VM's linux/arm64 or linux/amd64 platform.
+  when:
+    - aiops_backend_image_archive | length > 0
+    - not ansible_check_mode
 
 - name: Validate Compose without exposing the interpolated configuration
   ansible.builtin.command:

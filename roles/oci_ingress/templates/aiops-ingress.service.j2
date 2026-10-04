@@ -1,0 +1,12 @@
+[Unit]
+Description=AIOps additive HTTP and HTTPS host ingress rules
+After=netfilter-persistent.service
+Before=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/aiops-allow-web-ingress
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -4,8 +4,8 @@
     that:
       - ansible_facts['distribution'] == 'Ubuntu'
       - ansible_facts['distribution_version'] == '24.04'
-      - ansible_facts['architecture'] == 'x86_64'
-    fail_msg: This bootstrap supports Ubuntu 24.04 LTS amd64 only.
+      - ansible_facts['architecture'] in docker_host_architectures
+    fail_msg: This bootstrap supports Ubuntu 24.04 LTS on arm64 (A1) or amd64 (E2 Micro).
 
 - name: Install Docker repository prerequisites
   ansible.builtin.apt:
@@ -34,7 +34,9 @@
 
 - name: Configure the official Docker package repository
   ansible.builtin.apt_repository:
-    repo: deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable
+    repo: >-
+      deb [arch={{ docker_host_architectures[ansible_facts['architecture']] }} signed-by=/etc/apt/keyrings/docker.asc]
+      https://download.docker.com/linux/ubuntu noble stable
     filename: docker
     state: present
     update_cache: true
